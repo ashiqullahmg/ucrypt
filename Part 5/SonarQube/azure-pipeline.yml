@@ -1,0 +1,61 @@
+pool:
+  name: Azure Pipelines
+  demands: maven
+
+variables:
+  javaHomeSelection: 'JDKVersion'
+  jdkVersion: '1.17'
+  jdkArchitecture: 'x64'
+  mavenOpts: '-Xmx3072m'
+
+steps:
+- task: SonarSource.sonarqube.15B84CA1-B62F-4A2A-A403-89B77A063157.SonarQubePrepare@5
+  displayName: 'Prepare analysis on SonarQube'
+  inputs:
+    SonarQube: sonarQube
+    scannerMode: Other
+    extraProperties: |
+     # Additional properties that will be passed to the scanner, 
+     # Put one key=value per line, example:
+     # sonar.exclusions=**/*.bin
+     sonar.projectName=ucrypt
+     sonar.projectKey=ucrypt
+
+- task: Maven@4
+  displayName: BackendBuild
+  inputs:
+    mavenPomFile: 'crypto-back/pom.xml'
+    goals: 'package -DskipTests'
+    publishJUnitResults: false
+    javaHomeOption: '$(Parameters.javaHomeSelection)'
+    jdkVersionOption: '$(Parameters.jdkVersion)'
+    jdkArchitectureOption: '$(Parameters.jdkArchitecture)'
+    mavenOptions: '$(Parameters.mavenOpts)'
+    sonarQubeRunAnalysis: true
+
+- task: NodeTool@0
+  displayName: FrontendBuild
+  inputs:
+    versionSpec: 16.x
+
+- script: '$(Parameters.script)'
+  displayName: 'Command Line Script'
+
+- task: Docker@2
+  displayName: DockerImageBuildBackend
+  inputs:
+    containerRegistry: 'ucrypt_back_DR'
+    repository: '$(Parameters.repository)'
+    Dockerfile: 'crypto-back/Dockerfile'
+    tags: latest
+
+- task: Docker@2
+  displayName: DockerImageBuildFrontend
+  inputs:
+    containerRegistry: 'ucrypt_front_DR'
+    repository: 'ashiqullahmg/ucrypt_front'
+    Dockerfile: UCryptPortal/Dockerfile
+    tags: latest
+
+- task: SonarSource.sonarqube.291ed61f-1ee4-45d3-b1b0-bf822d9095ef.SonarQubePublish@5
+  displayName: 'Publish Quality Gate Result'
